@@ -1,0 +1,1545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AlHedaya Printing Calculator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/recharts/umd/Recharts.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .notification {
+            animation: fade-in-out 3s forwards;
+            z-index: 100;
+        }
+        @keyframes fade-in-out {
+            0% { opacity: 0; transform: translateY(-20px) translateX(-50%); }
+            10% { opacity: 1; transform: translateY(0) translateX(-50%); }
+            90% { opacity: 1; transform: translateY(0) translateX(-50%); }
+            100% { opacity: 0; transform: translateY(-20px) translateX(-50%); }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-4">
+<div id="root" class="flex items-center justify-center w-full"></div>
+
+<script type="text/babel">
+    const { useState, useEffect, Fragment } = React;
+    
+
+    // A simple utility component for displaying a stat card.
+    const StatCard = ({ title, value, iconSvg, colorClass }) => (
+      <div className={`p-4 rounded-xl shadow-lg flex items-center justify-between transition-all duration-300 transform hover:scale-105 bg-white`}>
+        <div>
+          <h3 className="text-sm font-semibold text-gray-500">{title}</h3>
+          <p className={`text-2xl font-bold mt-1 ${colorClass.text}`}>{value}</p>
+        </div>
+        <div className={`p-2 rounded-full ${colorClass.bg} ${colorClass.icon}`}>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" >{iconSvg}</svg>
+        </div>
+      </div>
+    );
+
+    // The main App component that manages state and page rendering
+    const App = () => {
+        const [isLoggedIn, setIsLoggedIn] = useState(false);
+        const [currentPage, setCurrentPage] = useState('dashboard');
+        const [calculatorKey, setCalculatorKey] = useState(0);
+        const [notification, setNotification] = useState(null);
+    
+   
+
+        // Dummy data for initial application state
+        const dummyOrders = [
+            {
+                date: "09/08/2025",
+                customerName: "Dummy Customer 1",
+                customerOrder: [{ description: "50 pages (B&W, Double-sided)", price: 1.000, numPages: 50, side: 'd', choice: 'b' }],
+                customerPrice: "BD1.00",
+                paymentMethod: "Cash",
+                orderStatus: "Done"
+            },
+            {
+                date: "09/08/2025",
+                customerName: "Dummy Customer 2",
+                customerOrder: [
+                    { description: "20 pages (Color, Single-sided)", price: 1.200, numPages: 20, side: 's', choice: 'c' },
+                    { description: "1 spiral binding", price: 0.500, binding: 'Spiral Binding' }
+                ],
+                customerPrice: "BD1.70",
+                paymentMethod: "Benefit Pay",
+                orderStatus: "In-Process"
+            },
+            {
+                date: "08/08/2025",
+                customerName: "Previous Customer",
+                customerOrder: [{ description: "100 pages (B&W, Double-sided)", price: 1.500, numPages: 100, side: 'd', choice: 'b' }],
+                customerPrice: "BD1.50",
+                paymentMethod: "Cash",
+                orderStatus: "Pending"
+            },
+        ];
+
+        const initialAssets = [
+            { id: 1, name: 'Paper (A4, White)', quantity: 1500, pricePerUnit: 0.005, unit: 'sheets' },
+            { id: 2, name: 'Paper (A3, White)', quantity: 200, pricePerUnit: 0.010, unit: 'sheets' },
+            { id: 3, name: 'Black Toner', quantity: 3, pricePerUnit: 12.500, unit: 'cartridges' },
+            { id: 4, name: 'Color Toner (Cyan)', quantity: 1, pricePerUnit: 15.000, unit: 'cartridges' },
+            { id: 5, name: 'Spiral Binding (Small)', quantity: 50, pricePerUnit: 0.200, unit: 'units' },
+        ];
+
+        // Validates and loads customer orders from local storage
+        const validateOrders = (orders) => {
+            if (!Array.isArray(orders)) return [];
+            return orders.filter(order =>
+                order && typeof order.date === 'string' && typeof order.customerPrice === 'string' && typeof order.paymentMethod === 'string' && typeof order.orderStatus === 'string'
+            );
+        };
+
+        const [customerOrders, setCustomerOrders] = useState(() => {
+            const savedOrders = localStorage.getItem('customerOrders');
+            if (savedOrders) {
+                try {
+                    const parsedOrders = JSON.parse(savedOrders);
+                    // A simple check to see if the data structure has changed, and if so,
+                    // we will default back to dummy data to avoid errors.
+                    const isOldFormat = parsedOrders.some(order => typeof order.customerOrder === 'string');
+                    if (isOldFormat) {
+                        return dummyOrders;
+                    }
+                    const validatedOrders = validateOrders(parsedOrders);
+                    if (validatedOrders.length > 0) {
+                        return validatedOrders;
+                    }
+                } catch (e) {
+                    console.error("Failed to parse orders from localStorage", e);
+                }
+            }
+            return dummyOrders;
+        });
+
+        // Validates and loads assets from local storage
+        const [assets, setAssets] = useState(() => {
+            const savedAssets = localStorage.getItem('assets');
+            if (savedAssets) {
+                try {
+                    const parsedAssets = JSON.parse(savedAssets);
+                    return parsedAssets;
+                } catch (e) {
+                    console.error("Failed to parse assets from localStorage", e);
+                }
+            }
+            return initialAssets;
+        });
+
+        // Effect to save customer orders to local storage whenever they change
+        useEffect(() => {
+            localStorage.setItem('customerOrders', JSON.stringify(customerOrders));
+        }, [customerOrders]);
+
+        // Effect to save assets to local storage whenever they change
+        useEffect(() => {
+            localStorage.setItem('assets', JSON.stringify(assets));
+        }, [assets]);
+
+        // Handles user login logic
+        const handleLogin = (username, password) => {
+            if ((username === 'hedaya' || username === 'hussain'|| username === 'bayan' ) && password === 'hedaya88') {
+                setIsLoggedIn(true);
+                setCurrentPage('dashboard');
+            } else {
+                setNotification({ message: 'Invalid username or password!' });
+                setTimeout(() => setNotification(null), 3000);
+            }
+        };
+
+        // Handles user logout
+        const handleLogout = () => {
+            setIsLoggedIn(false);
+            setCurrentPage('login');
+        };
+
+        // Handles navigation between pages
+        const handleNavigation = (page) => {
+            setCurrentPage(page);
+            if (page === 'make-an-order') {
+                setCalculatorKey(prevKey => prevKey + 1);
+            }
+        };
+
+        // Adds a new order to the list
+        const addOrder = (newOrder) => {
+            setCustomerOrders(prevOrders => [...prevOrders, newOrder]);
+        };
+
+        // Updates an existing order
+        const updateOrder = (index, updatedOrder) => {
+            setCustomerOrders(prevOrders => {
+                const newOrders = [...prevOrders];
+                if (newOrders[index]) {
+                    newOrders[index] = { ...newOrders[index], ...updatedOrder };
+                }
+                return newOrders;
+            });
+        };
+
+        // Deletes an order from the list
+        const deleteOrder = (index) => {
+            setCustomerOrders(prevOrders => prevOrders.filter((_, i) => i !== index));
+        };
+        
+        // This function will move an order from the 'Done' page back to 'In-Process'
+        const markOrderAsNotDone = (index) => {
+            setCustomerOrders(prevOrders => {
+                const newOrders = [...prevOrders];
+                if (newOrders[index]) {
+                    newOrders[index] = { ...newOrders[index], orderStatus: 'In-Process' };
+                }
+                return newOrders;
+            });
+        };
+        
+        // Deducts the correct quantity from an asset
+        const deductAsset = (assetName, quantityToDeduct) => {
+            setAssets(prevAssets => {
+                const updatedAssets = prevAssets.map(asset => {
+                    if (asset.name === assetName) {
+                        const newQuantity = Math.max(0, asset.quantity - quantityToDeduct);
+                        return { ...asset, quantity: newQuantity };
+                    }
+                    return asset;
+                });
+                return updatedAssets;
+            });
+        };
+
+        // Confirms the order and deducts assets
+        const addOrderWithDeduction = (newOrder, orderItems) => {
+            orderItems.forEach(item => {
+                if (item.numPages && item.side) {
+                    const sheetsToDeduct = item.side === 'd' ? Math.ceil(item.numPages / 2) : item.numPages;
+                    deductAsset('Paper (A4, White)', sheetsToDeduct);
+                    
+                    if (item.choice === 'b') {
+                        // Deduct black toner based on a simple per-page rate for now.
+                        deductAsset('Black Toner', item.numPages * 0.005);
+                    } else if (item.choice === 'c') {
+                        // Deduct color toner based on a simple per-page rate for now.
+                        deductAsset('Color Toner (Cyan)', item.numPages * 0.010);
+                    }
+                }
+                
+                if (item.binding === 'Spiral Binding') {
+                    deductAsset('Spiral Binding (Small)', 1);
+                }
+            });
+
+            addOrder(newOrder);
+
+            setNotification({ message: 'Order confirmed and assets deducted!' });
+            setTimeout(() => {
+                setNotification(null);
+            }, 3000);
+        };
+
+        // Renders the current page based on state
+        const renderPage = () => {
+            if (!isLoggedIn) {
+                return <LoginPage onLogin={handleLogin} notification={notification} />;
+            }
+
+            switch (currentPage) {
+                case 'dashboard':
+                    return <DashboardPage onNavigate={handleNavigation} onLogout={handleLogout} notification={notification} />;
+                case 'make-an-order':
+                    return <PrintingCalculator
+                            key={calculatorKey}
+                            onBack={() => handleNavigation('dashboard')}
+                            onOrderConfirmed={addOrderWithDeduction}
+                            />;
+                case 'customer-orders':
+                    return <CustomerOrdersPage onBack={() => handleNavigation('dashboard')} orders={customerOrders.filter(order => order.orderStatus !== 'Done')} onUpdateOrder={updateOrder} onDeleteOrder={deleteOrder} />;
+                case 'orders-done':
+                    return <OrdersDonePage onBack={() => handleNavigation('dashboard')} orders={customerOrders.filter(order => order.orderStatus === 'Done')} onUpdateOrder={updateOrder} onDeleteOrder={deleteOrder} />;
+                case 'sales':
+                    return <SalesPage onBack={() => handleNavigation('dashboard')} orders={customerOrders} assets={assets} />;
+                case 'assets':
+                    return <AssetsPage onBack={() => handleNavigation('dashboard')} assets={assets} setAssets={setAssets} />;
+                default:
+                    return <DashboardPage onNavigate={handleNavigation} onLogout={handleLogout} notification={notification} />;
+            }
+        };
+
+        return (
+            <Fragment>{renderPage()}</Fragment>
+        );
+    };
+
+    // Login Page Component
+    const LoginPage = ({ onLogin, notification }) => {
+        const [username, setUsername] = useState('');
+        const [password, setPassword] = useState('');
+
+        const handleSubmit = (e) => {
+            e.preventDefault();
+            onLogin(username, password);
+        };
+
+        return (
+            <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-sm space-y-6 relative">
+                 {notification && (
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 p-3 rounded-xl bg-red-500 text-white font-bold shadow-lg text-center notification">
+                        {notification.message}
+                    </div>
+                )}
+                <h2 className="text-3xl font-bold text-center text-gray-800">Login</h2>
+                <p className="text-center text-gray-600">Welcome to AlHedaya Printing</p>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-gray-700 font-semibold mb-2" htmlFor="username">Username</label>
+                        <input
+                            type="text"
+                            id="username"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                            placeholder="Enter username"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-gray-700 font-semibold mb-2" htmlFor="password">Password</label>
+                        <input
+                            type="password"
+                            id="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                            placeholder="Enter password"
+                            required
+                        />
+                    </div>
+                    <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors duration-200">
+                        Log In
+                    </button>
+                </form>
+            </div>
+        );
+    };
+
+    // Dashboard Page Component
+    const DashboardPage = ({ onNavigate, onLogout, notification }) => (
+        <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-3xl space-y-6 sm:space-y-8 relative">
+            {notification && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 p-3 rounded-xl bg-green-500 text-white font-bold shadow-lg text-center notification">
+                    {notification.message}
+                </div>
+            )}
+            <div className="flex justify-between items-center">
+                <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">Dashboard</h2>
+                <button
+                    onClick={onLogout}
+                    className="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-xl transition-colors duration-200 text-sm sm:text-base"
+                >
+                    Log Out
+                </button>
+            </div>
+            
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                <WidgetCard title="Make an Order" onClick={() => onNavigate('make-an-order')} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 sm:h-10 sm:w-10 text-blue-500" viewBox="0 0 24 24" fill="currentColor"><path d="M19 8h-1V3H6v5H5a2 2 0 00-2 2v6h1.5v6H20v-6h1V10a2 2 0 00-2-2zM8 5h8v3H8V5zm8 14H8v-6h8v6zm3-8h-1v-1h1v1zm-2 0h-1V9h1v1z" /></svg>} />
+                <WidgetCard title="Customer Orders" onClick={() => onNavigate('customer-orders')} icon={<svg xmlns="http://www.w3.org/2-1/2 4/24" className="h-8 w-8 sm:h-10 sm:w-10 text-green-500" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" /></svg>} />
+                <WidgetCard title="Orders Done" onClick={() => onNavigate('orders-done')} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 sm:h-10 sm:w-10 text-indigo-500" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z" /></svg>} />
+                <WidgetCard title="Sales" onClick={() => onNavigate('sales')} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 sm:h-10 sm:w-10 text-purple-500" viewBox="0 0 24 24" fill="currentColor"><path d="M13 11h-2v3H8v2h3v3h2v-3h3v-2h-3zm1-9H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6z" /></svg>} />
+                <WidgetCard title="Assets" onClick={() => onNavigate('assets')} icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 sm:h-10 sm:w-10 text-yellow-500" viewBox="0 0 24 24" fill="currentColor"><path d="M19 8H5c-1.1 0-2 .9-2 2v4a2 2 0 002 2h14c1.1 0 2-.9 2-2v-4a2 2 0 00-2-2zm-2.5 4a.5.5 0 11-.5-.5.5.5 0 01.5.5zM19 15a1 1 0 01-1 1H6a1 1 0 01-1-1v-4a1 1 0 011-1h12a1 1 0 011 1v4z" /></svg>} />
+            </div>
+        </div>
+    );
+
+    // Reusable Dashboard Widget Card Component
+    const WidgetCard = ({ title, onClick, icon }) => (
+        <div
+            className="bg-gray-50 p-6 rounded-xl shadow-md flex flex-col items-center justify-center space-y-4 cursor-pointer hover:bg-gray-100 transition-colors duration-200 transform hover:scale-105"
+            onClick={onClick}
+        >
+            {icon}
+            <h3 className="text-xl font-bold text-gray-800">{title}</h3>
+        </div>
+    );
+
+    // Printing Calculator Page Component
+    const PrintingCalculator = ({ onBack, onOrderConfirmed }) => {
+        const [order, setOrder] = useState('');
+        const [choice, setChoice] = useState('b');
+        const [side, setSide] = useState('d');
+        const [selectedBinding, setSelectedBinding] = useState(null);
+        const [showResults, setShowResults] = useState(false);
+        const [showConfirmForm, setShowConfirmForm] = useState(false);
+        const [customerName, setCustomerName] = useState('');
+        const [paymentMethod, setPaymentMethod] = useState('Pending');
+        const [finalPrice, setFinalPrice] = useState(0.0);
+        const [calculationMessages, setCalculationMessages] = useState([]);
+        const [currentOrderItems, setCurrentOrderItems] = useState([]);
+        const [copies, setCopies] = useState(1);
+        const [discount, setDiscount] = useState(0);
+
+        // Recalculates the total price of all items in the current order
+        const totalOrderPrice = currentOrderItems.reduce((sum, item) => sum + item.price, 0);
+
+        // Logic for calculating the cost of an individual print job
+        const performCalculation = (numOrder, printChoice, printSide, binding) => {
+            if (isNaN(numOrder) || numOrder <= 0) {
+                setCalculationMessages(["Please enter a valid number of pages."]);
+                setFinalPrice(0.0);
+                return;
+            }
+
+            let baseCost = 0.0;
+            const newMessages = [];
+            
+            // Calculate the base printing cost first
+            if (printChoice === 'b') { // Black & White
+                if (printSide === 'd') { // Double-sided
+                    if (numOrder <= 10) { baseCost = numOrder * 0.02; }
+                    else if (numOrder <= 20) { baseCost = numOrder * 0.015; }
+                    else if (numOrder < 100) { baseCost = numOrder * 0.0125; }
+                    else { baseCost = numOrder * 0.010; }
+                } else { // Single-sided
+                    if (numOrder <= 19) { baseCost = numOrder * 0.020; } 
+                    else if (numOrder <= 99) { baseCost = numOrder * 0.0150; }
+                    else { baseCost = numOrder * 0.0125; }
+                }
+            } else { // Color
+                if (printSide === 'd') { // Double-sided
+                    if (numOrder <= 10) { baseCost = numOrder * 0.05; }
+                    else if (numOrder <= 50) { baseCost = numOrder * 0.04; }
+                    else { baseCost = numOrder * 0.03; }
+                } else { // Single-sided
+                    if (numOrder <= 19) { baseCost = numOrder * 0.030; } 
+                    else if (numOrder <= 99) { baseCost = numOrder * 0.0250; }
+                    else { baseCost = numOrder * 0.020; }
+                }
+            }
+
+            newMessages.push(`Base printing cost: BD${baseCost.toFixed(3)}`);
+
+            let bindingCost = 0.0;
+            if (binding) {
+                if (binding === 'Tape Binding') { 
+                    bindingCost = 0.300; 
+                } else if (binding === 'Spiral Binding') {
+                    // Corrected logic for Spiral Binding based on user feedback
+                    if (printSide === 'd') { // Double-sided
+                        if (numOrder <= 100) {
+                            bindingCost = 0.400;
+                        } else {
+                            bindingCost = 0.500;
+                        }
+                    } else { // Single-sided
+                         if (numOrder <= 50) {
+                            bindingCost = 0.400;
+                        } else {
+                            bindingCost = 0.500;
+                        }
+                    }
+                }
+                if (binding !== 'Staple') {
+                    newMessages.push(`Binding cost: BD${bindingCost.toFixed(3)}`);
+                }
+            }
+            
+     
+            const calculatedPrice = baseCost + bindingCost;
+            newMessages.push(`Total: BD${calculatedPrice.toFixed(3)}`);
+
+            setCalculationMessages(newMessages);
+            setFinalPrice(calculatedPrice);
+            setShowResults(true);
+            setShowConfirmForm(false);
+        };
+
+        const calculateCost = (e) => {
+            if (e) e.preventDefault();
+            const numOrder = parseInt(order);
+            performCalculation(numOrder, choice, side, selectedBinding);
+        };
+
+        const handleAddToOrder = () => {
+    if (finalPrice <= 0) return;
+
+    const orderDetails = `${order} pages (${choice === 'b' ? 'B&W' : 'Color'}, ${side === 's' ? 'Single' : 'Double'}-sided) x${copies}`;
+    const bindingText = selectedBinding ? ` with ${selectedBinding}` : '';
+
+    // Calculate total price with discount
+    let total = finalPrice * copies - discount;
+    if (total < 0) total = 0;
+
+    const newItem = {
+        description: orderDetails + bindingText + (discount > 0 ? ` (Discount: BD${discount.toFixed(3)})` : ''),
+        price: total,
+        numPages: parseInt(order) * copies,
+        side: side,
+        choice: choice,
+        binding: selectedBinding,
+        copies: copies,
+        discount: discount
+    };
+
+    setCurrentOrderItems(prevItems => [...prevItems, newItem]);
+
+    // Reset form for next item
+    setOrder('');
+    setChoice('b');
+    setSide('d');
+    setSelectedBinding(null);
+    setShowResults(false);
+    setFinalPrice(0.0);
+    setCopies(1);
+    setDiscount(0);
+};
+  
+  
+        const handleRemoveFromOrder = (indexToRemove) => {
+            setCurrentOrderItems(prevItems => prevItems.filter((_, index) => index !== indexToRemove));
+        };
+
+        const handleClearOrder = () => {
+            setCurrentOrderItems([]);
+        };
+
+        const confirmOrder = (e) => {
+            e.preventDefault();
+            if (!customerName.trim()) {
+                const messageBox = document.createElement('div');
+                messageBox.className = 'fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50';
+                messageBox.innerHTML = `
+                    <div class="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full space-y-4 text-center">
+                        <h3 class="text-xl font-bold text-gray-800">Error</h3>
+                        <p class="text-gray-600">Please enter a customer name to confirm the order.</p>
+                        <button onclick="this.parentNode.parentNode.remove()" class="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-xl shadow-lg transition-colors duration-200">OK</button>
+                    </div>
+                `;
+                document.body.appendChild(messageBox);
+                return;
+            }
+
+            const today = new Date();
+            const day = String(today.getDate()).padStart(2, '0');
+            const month = String(today.getMonth() + 1).padStart(2, '0');
+            const year = today.getFullYear();
+            const formattedDate = `${day}/${month}/${year}`;
+
+            const newOrder = {
+                date: formattedDate,
+                customerName: customerName.trim(),
+                customerOrder: currentOrderItems,
+                customerPrice: `BD${totalOrderPrice.toFixed(2)}`,
+                paymentMethod: paymentMethod,
+                orderStatus: paymentMethod === 'Pending' ? 'Pending' : 'Done',
+            };
+
+            onOrderConfirmed(newOrder, currentOrderItems);
+
+            onBack();
+        };
+
+        const handleClearBinding = () => {
+            setSelectedBinding(null);
+            const numOrder = parseInt(order);
+            performCalculation(numOrder, choice, side, null);
+        };
+
+        return (
+            <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-lg space-y-6">
+                <div className="flex items-center space-x-4">
+                    <button
+                        onClick={onBack}
+                        className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors duration-200"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">Make an Order</h2>
+                </div>
+
+                <form onSubmit={calculateCost} className="space-y-6">
+                    <div>
+                        <label htmlFor="order" className="block text-gray-700 font-semibold mb-2">Number of Pages</label>
+                        <input
+                            type="number"
+                            id="order"
+                            value={order}
+                            onChange={(e) => setOrder(e.target.value)}
+                            placeholder="e.g., 50"
+                            required
+                            className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                        />
+                    </div>
+                    
+                    <div>
+                        <label className="block text-gray-700 font-semibold mb-2">Print Type</label>
+                        <div className="flex items-center space-x-4">
+                            <label className="inline-flex items-center">
+                                <input type="radio" name="choice" value="b" checked={choice === 'b'} onChange={(e) => setChoice(e.target.value)} className="form-radio text-blue-600" />
+                                <span className="ml-2 text-gray-700">B&W</span>
+                            </label>
+                            <label className="inline-flex items-center">
+                                <input type="radio" name="choice" value="c" checked={choice === 'c'} onChange={(e) => setChoice(e.target.value)} className="form-radio text-blue-600" />
+                                <span className="ml-2 text-gray-700">Color</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-gray-700 font-semibold mb-2">Printing Side</label>
+                        <div className="flex items-center space-x-4">
+                            <label className="inline-flex items-center">
+                                <input type="radio" name="side" value="d" checked={side === 'd'} onChange={(e) => setSide(e.target.value)} className="form-radio text-blue-600" />
+                                <span className="ml-2 text-gray-700">Double-Sided</span>
+                            </label>
+                            <label className="inline-flex items-center">
+                                <input type="radio" name="side" value="s" checked={side === 's'} onChange={(e) => setSide(e.target.value)} className="form-radio text-blue-600" />
+                                <span className="ml-2 text-gray-700">Single-Sided</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-gray-700 font-semibold mb-2">Binding</label>
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <button
+                                type="button"
+                                onClick={() => setSelectedBinding('Tape Binding')}
+                                className={`flex-1 text-center py-4 px-6 rounded-xl font-semibold transition-colors duration-200
+                                            ${selectedBinding === 'Tape Binding'
+                                                ? 'bg-indigo-600 text-white shadow-lg'
+                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                                        }
+                            >
+                                Tape Binding
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedBinding('Spiral Binding')}
+                                className={`flex-1 text-center py-4 px-6 rounded-xl font-semibold transition-colors duration-200
+                                            ${selectedBinding === 'Spiral Binding'
+                                                ? 'bg-indigo-600 text-white shadow-lg'
+                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                                        }
+                            >
+                                Spiral Binding
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setSelectedBinding('Staple')}
+                                className={`flex-1 text-center py-4 px-6 rounded-xl font-semibold transition-colors duration-200
+                                            ${selectedBinding === 'Staple'
+                                                ? 'bg-indigo-600 text-white shadow-lg'
+                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`
+                                        }
+                            >
+                                Staple
+                            </button>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={handleClearBinding}
+                            className="mt-2 text-sm text-gray-500 hover:text-red-500 transition-colors duration-200"
+                        >
+                            Clear Binding
+                        </button>
+                    </div>
+                    
+                    <div className="flex space-x-4">
+                        <button
+                            type="button"
+                            onClick={onBack}
+                            className="w-1/2 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors duration-200"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            className="w-1/2 bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors duration-200"
+                        >
+                            Calculate Cost
+                        </button>
+                    </div>
+                </form>
+
+                {showResults && (
+    <div className="mt-8 pt-6 border-t border-gray-200 space-y-4">
+        <h3 className="text-xl font-bold text-gray-800">Calculation Details</h3>
+        <ul className="list-disc list-inside text-gray-600 space-y-1">
+            {calculationMessages.map((msg, index) => <li key={index}>{msg}</li>)}
+        </ul>
+        <div className="text-2xl font-bold text-blue-600">
+            Item Price: BD{finalPrice.toFixed(3)}
+        </div>
+        <div className="flex items-center mt-4">
+            <label htmlFor="copies" className="mr-2 font-semibold text-gray-700">Number of Copies:</label>
+            <input
+                type="number"
+                id="copies"
+                min="1"
+                value={copies}
+                onChange={e => setCopies(Number(e.target.value))}
+                className="border rounded px-2 py-1 w-20 mr-2"
+            />
+        </div>
+        
+        <div className="flex items-center mt-2">
+            <label htmlFor="discount" className="mr-2 font-semibold text-gray-700">Discount (BD):</label>
+             <input
+                type="number"
+                id="discount"
+                min="0"
+                step="0.001"
+                value={discount}
+                onChange={e => setDiscount(Number(e.target.value))}
+                className="border rounded px-2 py-1 w-24 mr-2"
+            />
+        </div>
+        <button
+              onClick={handleAddToOrder}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors duration-200"
+        >
+            Add to Order
+        </button>
+    </div>
+)}
+                
+                {currentOrderItems.length > 0 && (
+                    <div className="pt-4 border-t border-gray-200 space-y-4">
+                        <div className="flex justify-between items-center">
+                            <h3 className="text-xl font-bold text-gray-800">Current Order</h3>
+                            <button
+                                onClick={handleClearOrder}
+                                className="text-sm text-red-500 hover:text-red-700 font-semibold transition-colors duration-200"
+                            >
+                                Clear All
+                            </button>
+                        </div>
+                        <ul className="list-none text-gray-600 space-y-2">
+                            {currentOrderItems.map((item, index) => (
+                                <li key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl">
+                                    <div className="text-gray-900 break-words" style={{ wordBreak: 'break-word' }}>{item.description} - <span className="font-semibold">BD{item.price.toFixed(3)}</span></div>
+                                    <button
+                                        onClick={() => handleRemoveFromOrder(index)}
+                                        className="p-1 rounded-full text-red-500 hover:bg-red-100 transition-colors duration-200"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                        <div className="text-2xl font-bold text-blue-600 mt-4">
+                            Order Total: BD{totalOrderPrice.toFixed(3)}
+                        </div>
+                        <button
+                            onClick={() => setShowConfirmForm(true)}
+                            className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors duration-200 mt-2"
+                        >
+                            Place Order
+                        </button>
+                    </div>
+                )}
+                
+                {showConfirmForm && (
+                    <div className="mt-8 pt-6 border-t border-gray-200 space-y-4">
+                        <form onSubmit={confirmOrder} className="space-y-4">
+                            <h4 className="text-lg font-semibold text-gray-700">Confirm Order Details</h4>
+                            <div>
+                                <label htmlFor="customerName" className="block text-gray-700 font-semibold mb-2">Customer Name</label>
+                                <input
+                                    type="text"
+                                    id="customerName"
+                                    value={customerName}
+                                    onChange={(e) => setCustomerName(e.target.value)}
+                                    placeholder="Enter customer name"
+                                    required
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                                />
+                            </div>
+                            <div>
+                                <label htmlFor="paymentMethod" className="block text-gray-700 font-semibold mb-2">Payment Method</label>
+                                <select
+                                    id="paymentMethod"
+                                    value={paymentMethod}
+                                    onChange={(e) => setPaymentMethod(e.target.value)}
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-colors duration-200"
+                                >
+                                    <option value="Pending">Pending</option>
+                                    <option value="Cash">Cash</option>
+                                    <option value="Benefit Pay">Benefit Pay</option>
+                                </select>
+                            </div>
+                            <div className="flex space-x-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowConfirmForm(false)}
+                                    className="w-1/2 bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors duration-200"
+                                >
+                                    Back
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="w-1/2 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-xl shadow-lg transition-colors duration-200"
+                                >
+                                    Confirm Order
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // Customer Orders Page Component
+    const CustomerOrdersPage = ({ onBack, orders, onUpdateOrder, onDeleteOrder }) => {
+        const [editingIndex, setEditingIndex] = useState(null);
+        const [showDeleteModal, setShowDeleteModal] = useState(false);
+        const [orderToDeleteIndex, setOrderToDeleteIndex] = useState(null);
+        const [notification, setNotification] = useState(null);
+        const [updatedOrder, setUpdatedOrder] = useState({});
+        const [showDetailsModal, setShowDetailsModal] = useState(false);
+        const [selectedOrderDetails, setSelectedOrderDetails] = useState([]);
+        const totalCustomers = orders.length;
+        const [discount, setDiscount] = useState(0);
+
+        const handleEdit = (index) => {
+            setEditingIndex(index);
+            // Handle editing for both string and array formats
+            const orderToEdit = { ...orders[index] };
+            if (Array.isArray(orderToEdit.customerOrder)) {
+                // For multi-item orders, convert the array to a single string for the input field
+                orderToEdit.customerOrder = orderToEdit.customerOrder.map(item => item.description).join(', ');
+            }
+            setUpdatedOrder(orderToEdit);
+        };
+
+        const handleSave = () => {
+            onUpdateOrder(editingIndex, updatedOrder);
+            setEditingIndex(null);
+            setUpdatedOrder({});
+            setNotification({ message: 'Order updated successfully!' });
+            setTimeout(() => setNotification(null), 3000);
+        };
+
+        const handleCancelEdit = () => {
+            setEditingIndex(null);
+            setUpdatedOrder({});
+        };
+
+        const handleChange = (e) => {
+            const { name, value } = e.target;
+            setUpdatedOrder(prev => ({ ...prev, [name]: value }));
+        };
+
+        const handleDelete = (index) => {
+            setOrderToDeleteIndex(index);
+            setShowDeleteModal(true);
+        };
+
+        const confirmDelete = () => {
+            if (orderToDeleteIndex !== null) {
+                onDeleteOrder(orderToDeleteIndex);
+                setShowDeleteModal(false);
+                setOrderToDeleteIndex(null);
+                setNotification({ message: 'Order deleted successfully!' });
+                setTimeout(() => setNotification(null), 3000);
+            }
+        };
+
+        const cancelDelete = () => {
+            setShowDeleteModal(false);
+            setOrderToDeleteIndex(null);
+        };
+        
+        const handleViewDetails = (orderDetails) => {
+            setSelectedOrderDetails(orderDetails);
+            setShowDetailsModal(true);
+        };
+
+        const closeDetailsModal = () => {
+            setShowDetailsModal(false);
+            setSelectedOrderDetails([]);
+        };
+
+        return (
+            <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-5xl space-y-6 relative">
+                 {notification && (
+                    <div className="fixed top-4 left-1/2 -translate-x-1/2 p-3 rounded-xl bg-green-500 text-white font-bold shadow-lg text-center notification">
+                        {notification.message}
+                    </div>
+                )}
+                {showDeleteModal && (
+                    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full space-y-4 text-center">
+                            <h3 className="text-xl font-bold text-gray-800">Confirm Deletion</h3>
+                            <p className="text-gray-600">Are you sure you want to delete this order? This action cannot be undone.</p>
+                            <div className="flex justify-center space-x-4">
+                                <button onClick={confirmDelete} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-xl shadow-lg transition-colors duration-200">
+                                    Delete
+                                </button>
+                                <button onClick={cancelDelete} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-xl shadow-lg transition-colors duration-200">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {showDetailsModal && (
+                    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full space-y-4">
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-2xl font-bold text-gray-800">Order Details</h3>
+                                <button onClick={closeDetailsModal} className="text-gray-500 hover:text-gray-700">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+                            <ul className="list-disc list-inside space-y-2 text-gray-700">
+                                {selectedOrderDetails.map((item, index) => (
+                                    <li key={index} className="flex justify-between items-center">
+                                        <div className="text-gray-900 break-words pr-2">{item.description}</div>
+                                        <div className="font-semibold whitespace-nowrap">BD{item.price.toFixed(3)}</div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                )}
+                
+                <div className="flex items-center space-x-4">
+                    <button
+                        onClick={onBack}
+                        className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors duration-200"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">Customer Orders</h2>
+                </div>
+                
+                <div className="w-full flex justify-center">
+                    <div className="bg-white p-4 rounded-xl shadow-lg flex items-center justify-center w-full max-w-sm transition-all duration-300 transform hover:scale-105">
+                        <div>
+                            <h3 className="text-sm font-semibold text-gray-500">Total In-Process Orders</h3>
+                            <p className="text-2xl font-bold mt-1 text-purple-600">{totalCustomers}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-xl shadow-md">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">Order No.</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">Date</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-2/12">Customer Name</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-4/12">Order Details</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">Price (BD)</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">Payment</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">Status</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-2/12">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {orders.length === 0 ? (
+                                <tr>
+                                    <td colSpan="8" className="px-4 py-4 text-center text-gray-500">No orders found.</td>
+                                </tr>
+                            ) : (
+                                orders.map((order, index) => (
+                                    <tr key={index}>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{index + 1}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{order.date}</td>
+                                        <td className="px-4 py-4 text-sm font-medium text-gray-900">
+                                            {editingIndex === index ? (
+                                                <input
+                                                    type="text"
+                                                    name="customerName"
+                                                    value={updatedOrder.customerName}
+                                                    onChange={handleChange}
+                                                    className="w-full px-2 py-1 border rounded-md focus:ring-blue-500"
+                                                />
+                                            ) : (
+                                                <div className="whitespace-normal break-words">{order.customerName}</div>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4 text-sm text-gray-500">
+                                            {editingIndex === index ? (
+                                                <input
+                                                    type="text"
+                                                    name="customerOrder"
+                                                    value={updatedOrder.customerOrder}
+                                                    onChange={handleChange}
+                                                    className="w-full px-2 py-1 border rounded-md focus:ring-blue-500"
+                                                />
+                                            ) : (
+                                                <div className="whitespace-normal break-words">
+                                                    {Array.isArray(order.customerOrder) ? (
+                                                        <button onClick={() => handleViewDetails(order.customerOrder)} className="text-blue-600 hover:text-blue-800 font-semibold transition-colors duration-200">
+                                                            View Details ({order.customerOrder.length} items)
+                                                        </button>
+                                                    ) : (
+                                                        order.customerOrder
+                                                    )}
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {editingIndex === index ? (
+                                                <input
+                                                    type="text"
+                                                    name="customerPrice"
+                                                    value={updatedOrder.customerPrice}
+                                                    onChange={handleChange}
+                                                    className="w-full px-2 py-1 border rounded-md focus:ring-blue-500"
+                                                />
+                                            ) : (
+                                                order.customerPrice
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {editingIndex === index ? (
+                                                <select name="paymentMethod" value={updatedOrder.paymentMethod} onChange={handleChange} className="w-full px-2 py-1 border rounded-md focus:ring-blue-500">
+                                                    <option value="Cash">Cash</option>
+                                                    <option value="Benefit Pay">Benefit Pay</option>
+                                                    <option value="Pending">Pending</option>
+                                                </select>
+                                            ) : (
+                                                order.paymentMethod
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {editingIndex === index ? (
+                                                <select name="orderStatus" value={updatedOrder.orderStatus} onChange={handleChange} className="w-full px-2 py-1 border rounded-md focus:ring-blue-500">
+                                                    <option value="Done">Done</option>
+                                                    <option value="Pending">Pending</option>
+                                                    <option value="In-Process">In-Process</option>
+                                                </select>
+                                            ) : (
+                                                <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full
+                                                    ${order.orderStatus === 'Done' ? 'bg-green-100 text-green-800' : ''}
+                                                    ${order.orderStatus === 'Pending' ? 'bg-red-100 text-red-800' : ''}
+                                                    ${order.orderStatus === 'In-Process' ? 'bg-yellow-100 text-yellow-800' : ''}`
+                                                }>
+                                                    {order.orderStatus}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                                            {editingIndex === index ? (
+                                                <Fragment>
+                                                    <button onClick={handleSave} className="text-green-600 hover:text-green-900 transition-colors duration-200">Save</button>
+                                                    <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700 transition-colors duration-200">Cancel</button>
+                                                </Fragment>
+                                            ) : (
+                                                <Fragment>
+                                                    <button onClick={() => handleEdit(index)} className="text-blue-600 hover:text-blue-900 transition-colors duration-200">Edit</button>
+                                                    <button onClick={() => handleDelete(index)} className="text-red-600 hover:text-red-900 transition-colors duration-200">Delete</button>
+                                                </Fragment>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
+    
+    // Orders Done Page Component
+    const OrdersDonePage = ({ onBack, orders, onUpdateOrder, onDeleteOrder }) => {
+        const [showDeleteModal, setShowDeleteModal] = useState(false);
+        const [orderToDeleteIndex, setOrderToDeleteIndex] = useState(null);
+        const [notification, setNotification] = useState(null);
+        const [showDetailsModal, setShowDetailsModal] = useState(false);
+        const [selectedOrderDetails, setSelectedOrderDetails] = useState([]);
+        
+        const totalDoneOrders = orders.length;
+        
+        const handleRevert = (index) => {
+            const originalIndex = orders.indexOf(orders[index]);
+            onUpdateOrder(originalIndex, { orderStatus: 'In-Process' });
+            setNotification({ message: 'Order moved back to In-Process!' });
+            setTimeout(() => setNotification(null), 3000);
+        };
+        
+        const handleDelete = (index) => {
+            setOrderToDeleteIndex(index);
+            setShowDeleteModal(true);
+        };
+
+        const confirmDelete = () => {
+            if (orderToDeleteIndex !== null) {
+                const originalIndex = orders.indexOf(orders[orderToDeleteIndex]);
+                onDeleteOrder(originalIndex);
+                setShowDeleteModal(false);
+                setOrderToDeleteIndex(null);
+                setNotification({ message: 'Order deleted successfully!' });
+                setTimeout(() => setNotification(null), 3000);
+            }
+        };
+
+        const cancelDelete = () => {
+            setShowDeleteModal(false);
+            setOrderToDeleteIndex(null);
+        };
+        
+        const handleViewDetails = (orderDetails) => {
+            setSelectedOrderDetails(orderDetails);
+            setShowDetailsModal(true);
+        };
+
+        const closeDetailsModal = () => {
+            setShowDetailsModal(false);
+            setSelectedOrderDetails([]);
+        };
+
+        return (
+            <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-5xl space-y-6 relative">
+                 {notification && (
+                    <div className="fixed top-4 left-1/2 -translate-x-1/2 p-3 rounded-xl bg-green-500 text-white font-bold shadow-lg text-center notification">
+                        {notification.message}
+                    </div>
+                )}
+                {showDeleteModal && (
+                    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-sm w-full space-y-4 text-center">
+                            <h3 className="text-xl font-bold text-gray-800">Confirm Deletion</h3>
+                            <p className="text-gray-600">Are you sure you want to delete this order? This action cannot be undone.</p>
+                            <div className="flex justify-center space-x-4">
+                                <button onClick={confirmDelete} className="bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-xl shadow-lg transition-colors duration-200">
+                                    Delete
+                                </button>
+                                <button onClick={cancelDelete} className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-xl shadow-lg transition-colors duration-200">
+                                    Cancel
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+                
+                {showDetailsModal && (
+                    <div className="fixed inset-0 bg-gray-600 bg-opacity-50 flex items-center justify-center p-4 z-50">
+                        <div className="bg-white p-8 rounded-2xl shadow-2xl max-w-md w-full space-y-4">
+                            <div className="flex justify-between items-center">
+                                <h3 className="text-2xl font-bold text-gray-800">Order Details</h3>
+                                <button onClick={closeDetailsModal} className="text-gray-500 hover:text-gray-700">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                </button>
+                            </div>
+                            <ul className="list-disc list-inside space-y-2 text-gray-700">
+                                {selectedOrderDetails.map((item, index) => (
+                                    <li key={index} className="flex justify-between items-center">
+                                        <div className="text-gray-900 break-words pr-2">{item.description}</div>
+                                        <div className="font-semibold whitespace-nowrap">BD{item.price.toFixed(3)}</div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    </div>
+                )}
+                
+                <div className="flex items-center space-x-4">
+                    <button
+                        onClick={onBack}
+                        className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors duration-200"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">Orders Done</h2>
+                </div>
+                
+                <div className="w-full flex justify-center">
+                    <div className="bg-white p-4 rounded-xl shadow-lg flex items-center justify-center w-full max-w-sm transition-all duration-300 transform hover:scale-105">
+                        <div>
+                            <h3 className="text-sm font-semibold text-gray-500">Total Done Orders</h3>
+                            <p className="text-2xl font-bold mt-1 text-indigo-600">{totalDoneOrders}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-xl shadow-md">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">Order No.</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">Date</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-2/12">Customer Name</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-4/12">Order Details</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">Price (BD)</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">Payment</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-1/12">Status</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-2/12">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {orders.length === 0 ? (
+                                <tr>
+                                    <td colSpan="8" className="px-4 py-4 text-center text-gray-500">No completed orders found.</td>
+                                </tr>
+                            ) : (
+                                orders.map((order, index) => (
+                                    <tr key={index}>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{index + 1}</td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-900">{order.date}</td>
+                                        <td className="px-4 py-4 text-sm font-medium text-gray-900">
+                                            <div className="whitespace-normal break-words">{order.customerName}</div>
+                                        </td>
+                                        <td className="px-4 py-4 text-sm text-gray-500">
+                                            <div className="whitespace-normal break-words">
+                                                {Array.isArray(order.customerOrder) ? (
+                                                    <button onClick={() => handleViewDetails(order.customerOrder)} className="text-blue-600 hover:text-blue-800 font-semibold transition-colors duration-200">
+                                                        View Details ({order.customerOrder.length} items)
+                                                    </button>
+                                                ) : (
+                                                    order.customerOrder
+                                                )}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {order.customerPrice}
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {order.paymentMethod}
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-100 text-green-800`}>
+                                                {order.orderStatus}
+                                            </span>
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                                            <button onClick={() => handleRevert(index)} className="text-blue-600 hover:text-blue-900 transition-colors duration-200">Revert</button>
+                                            <button onClick={() => handleDelete(index)} className="text-red-600 hover:text-red-900 transition-colors duration-200">Delete</button>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
+
+    // Sales Page Component
+    const SalesPage = ({ onBack, orders, assets }) => {
+        // Function to calculate total sales for a given status and/or payment method
+        const calculateTotal = (status = null, paymentMethod = null) => {
+            const filteredOrders = orders.filter(order => {
+                const statusMatch = status === null || order.orderStatus === status;
+                const paymentMatch = paymentMethod === null || order.paymentMethod === paymentMethod;
+                return statusMatch && paymentMatch;
+            });
+            return filteredOrders.reduce((sum, order) => {
+                const price = parseFloat(order.customerPrice.replace('BD', '')) || 0;
+                return sum + price;
+            }, 0).toFixed(2);
+        };
+
+        // Function to calculate and return a consolidated list of expenses
+        const getExpenseBreakdown = () => {
+            const consolidatedExpenses = {};
+            const assetsMap = new Map(assets.map(asset => [asset.name, asset]));
+
+            orders.forEach(order => {
+                // Ensure order.customerOrder is an array before iterating
+                if (Array.isArray(order.customerOrder)) {
+                    order.customerOrder.forEach(item => {
+                        let totalCost = 0;
+                        let assetName = '';
+                        let usedUnits = 0;
+
+                        if (item.numPages && item.side) {
+                            const sheetsUsed = item.side === 'd' ? Math.ceil(item.numPages / 2) : item.numPages;
+                            const paperAsset = assetsMap.get('Paper (A4, White)');
+                            if (paperAsset) {
+                                totalCost += sheetsUsed * paperAsset.pricePerUnit;
+                                assetName = paperAsset.name;
+                                usedUnits = sheetsUsed;
+                                // Consolidate expense
+                                if (!consolidatedExpenses[assetName]) {
+                                    consolidatedExpenses[assetName] = { totalUsed: 0, totalCost: 0 };
+                                }
+                                consolidatedExpenses[assetName].totalUsed += usedUnits;
+                                consolidatedExpenses[assetName].totalCost += totalCost;
+                            }
+                            
+                            // Deduct toner
+                            if (item.choice === 'b') {
+                                const blackTonerAsset = assetsMap.get('Black Toner');
+                                if (blackTonerAsset) {
+                                    const tonerCost = item.numPages * 0.005;
+                                    const tonerName = blackTonerAsset.name;
+                                    if (!consolidatedExpenses[tonerName]) {
+                                        consolidatedExpenses[tonerName] = { totalUsed: 0, totalCost: 0 };
+                                    }
+                                    consolidatedExpenses[tonerName].totalUsed += item.numPages * 0.005;
+                                    consolidatedExpenses[tonerName].totalCost += tonerCost;
+                                }
+                            } else if (item.choice === 'c') {
+                                const colorTonerAsset = assetsMap.get('Color Toner (Cyan)');
+                                if (colorTonerAsset) {
+                                    const tonerCost = item.numPages * 0.010;
+                                    const tonerName = colorTonerAsset.name;
+                                    if (!consolidatedExpenses[tonerName]) {
+                                        consolidatedExpenses[tonerName] = { totalUsed: 0, totalCost: 0 };
+                                    }
+                                    consolidatedExpenses[tonerName].totalUsed += item.numPages * 0.010;
+                                    consolidatedExpenses[tonerName].totalCost += tonerCost;
+                                }
+                            }
+
+                        }
+                        
+                        // Deduct binding expense
+                        if (item.binding === 'Spiral Binding') {
+                            const spiralBindingAsset = assetsMap.get('Spiral Binding (Small)');
+                            if (spiralBindingAsset) {
+                                const bindingCost = spiralBindingAsset.pricePerUnit;
+                                const bindingName = spiralBindingAsset.name;
+                                if (!consolidatedExpenses[bindingName]) {
+                                    consolidatedExpenses[bindingName] = { totalUsed: 0, totalCost: 0 };
+                                }
+                                consolidatedExpenses[bindingName].totalUsed += 1;
+                                consolidatedExpenses[bindingName].totalCost += bindingCost;
+                            }
+                        }
+                    });
+                }
+            });
+
+            return consolidatedExpenses;
+        };
+
+        // Calculate all sales metrics
+        const totalSales = calculateTotal(null, null);
+        const totalCash = calculateTotal('Done', 'Cash');
+        const totalBenefitPay = calculateTotal('Done', 'Benefit Pay');
+        const totalPending = calculateTotal('Pending', null);
+        const expenseBreakdown = getExpenseBreakdown();
+        const totalExpenses = Object.values(expenseBreakdown).reduce((sum, item) => sum + item.totalCost, 0).toFixed(3);
+        const netProfit = (parseFloat(totalSales) - parseFloat(totalExpenses)).toFixed(3);
+
+
+        return (
+            <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-3xl space-y-6">
+                <div className="flex items-center space-x-4">
+                    <button
+                        onClick={onBack}
+                        className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors duration-200"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">Sales Dashboard</h2>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <StatCard
+                        title="Total Sales"
+                        value={`BD${totalSales}`}
+                        iconSvg={<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />}
+                        colorClass={{ text: 'text-green-600', bg: 'bg-green-100', icon: 'text-green-600' }}
+                    />
+                    <StatCard
+                        title="Total Cash"
+                        value={`BD${totalCash}`}
+                        iconSvg={<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />}
+                        colorClass={{ text: 'text-indigo-600', bg: 'bg-indigo-100', icon: 'text-indigo-600' }}
+                    />
+                    <StatCard
+                        title="Total Benefit Pay"
+                        value={`BD${totalBenefitPay}`}
+                        iconSvg={<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />}
+                        colorClass={{ text: 'text-indigo-600', bg: 'bg-indigo-100', icon: 'text-indigo-600' }}
+                    />
+                    <StatCard
+                        title="Total Pending Sales"
+                        value={`BD${totalPending}`}
+                        iconSvg={<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />}
+                        colorClass={{ text: 'text-yellow-600', bg: 'bg-yellow-100', icon: 'text-yellow-600' }}
+                    />
+                    <StatCard
+                        title="Total Expenses"
+                        value={`BD${totalExpenses}`}
+                        iconSvg={<path d="M21 6H3c-1.1 0-2 .9-2 2v8c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 10H3V8h18v8zm-10-7h2v4h-2V9z" />}
+                        colorClass={{ text: 'text-red-600', bg: 'bg-red-100', icon: 'text-red-600' }}
+                    />
+                    <StatCard
+                        title="Net Profit"
+                        value={`BD${netProfit}`}
+                        iconSvg={<path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />}
+                        colorClass={{ text: 'text-green-600', bg: 'bg-green-100', icon: 'text-green-600' }}
+                    />
+                </div>
+                
+                {Object.keys(expenseBreakdown).length > 0 && (
+                    <div className="pt-6 border-t border-gray-200">
+                        <h3 className="text-xl font-bold text-gray-800 mb-4">Expense Breakdown</h3>
+                        <div className="space-y-4">
+                            {Object.entries(expenseBreakdown).map(([assetName, data], index) => (
+                                <div key={index} className="bg-gray-50 p-4 rounded-xl shadow-md">
+                                    <p className="text-sm font-semibold text-gray-700">
+                                        {assetName}: <span className="text-gray-500">BD{data.totalCost.toFixed(3)}</span>
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    // Assets Page Component
+    const AssetsPage = ({ onBack, assets, setAssets }) => {
+        const [editingId, setEditingId] = useState(null);
+        const [updatedAsset, setUpdatedAsset] = useState({});
+        const [notification, setNotification] = useState(null);
+
+        const handleEdit = (id) => {
+            setEditingId(id);
+            const assetToEdit = assets.find(a => a.id === id);
+            setUpdatedAsset({ ...assetToEdit });
+        };
+
+        const handleSave = () => {
+            setAssets(prevAssets => prevAssets.map(asset =>
+                asset.id === editingId ? { ...asset, ...updatedAsset } : asset
+            ));
+            setEditingId(null);
+            setUpdatedAsset({});
+            setNotification({ message: 'Asset updated successfully!' });
+            setTimeout(() => setNotification(null), 3000);
+        };
+
+        const handleCancelEdit = () => {
+            setEditingId(null);
+            setUpdatedAsset({});
+        };
+
+        const handleChange = (e) => {
+            const { name, value } = e.target;
+            setUpdatedAsset(prev => ({
+                ...prev,
+                [name]: name === 'quantity' || name === 'pricePerUnit' ? parseFloat(value) || 0 : value
+            }));
+        };
+
+        return (
+            <div className="bg-white p-6 sm:p-8 rounded-2xl shadow-xl w-full max-w-3xl space-y-6 relative">
+                 {notification && (
+                    <div className="fixed top-4 left-1/2 -translate-x-1/2 p-3 rounded-xl bg-green-500 text-white font-bold shadow-lg text-center notification">
+                        {notification.message}
+                    </div>
+                )}
+                <div className="flex items-center space-x-4">
+                    <button
+                        onClick={onBack}
+                        className="p-2 rounded-full bg-gray-200 hover:bg-gray-300 transition-colors duration-200"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                    </button>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-gray-800">Assets</h2>
+                </div>
+
+                <div className="overflow-x-auto rounded-xl shadow-md">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asset Name</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Price/Unit (BD)</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Total Price (BD)</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {assets.length === 0 ? (
+                                <tr>
+                                    <td colSpan="5" className="px-4 py-4 text-center text-gray-500">No assets found.</td>
+                                </tr>
+                            ) : (
+                                assets.map(asset => (
+                                    <tr key={asset.id}>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                            {editingId === asset.id ? (
+                                                <input
+                                                    type="text"
+                                                    name="name"
+                                                    value={updatedAsset.name}
+                                                    onChange={handleChange}
+                                                    className="w-full px-2 py-1 border rounded-md focus:ring-blue-500"
+                                                />
+                                            ) : (
+                                                <div className="whitespace-normal break-words">{asset.name}</div>
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {editingId === asset.id ? (
+                                                <input
+                                                    type="number"
+                                                    name="quantity"
+                                                    value={updatedAsset.quantity}
+                                                    onChange={handleChange}
+                                                    className="w-full px-2 py-1 border rounded-md focus:ring-blue-500"
+                                                />
+                                            ) : (
+                                                `${asset.quantity} ${asset.unit}`
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {editingId === asset.id ? (
+                                                <input
+                                                    type="number"
+                                                    step="0.001"
+                                                    name="pricePerUnit"
+                                                    value={updatedAsset.pricePerUnit}
+                                                    onChange={handleChange}
+                                                    className="w-full px-2 py-1 border rounded-md focus:ring-blue-500"
+                                                />
+                                            ) : (
+                                                `BD${asset.pricePerUnit.toFixed(3)}`
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+                                            {`BD${(asset.quantity * asset.pricePerUnit).toFixed(3)}`}
+                                        </td>
+                                        <td className="px-4 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
+                                            {editingId === asset.id ? (
+                                                <Fragment>
+                                                    <button onClick={handleSave} className="text-green-600 hover:text-green-900 transition-colors duration-200">Save</button>
+                                                    <button onClick={handleCancelEdit} className="text-gray-500 hover:text-gray-700 transition-colors duration-200">Cancel</button>
+                                                </Fragment>
+                                            ) : (
+                                                <button onClick={() => handleEdit(asset.id)} className="text-blue-600 hover:text-blue-900 transition-colors duration-200">Edit</button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        );
+    };
+
+    // Initial render
+    ReactDOM.render(<App />, document.getElementById('root'));
+
+</script>
+</body>
+</html>
